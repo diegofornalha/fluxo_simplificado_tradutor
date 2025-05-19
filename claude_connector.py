@@ -1,9 +1,4 @@
 #!/usr/bin/env python3
-"""
-Conector simplificado para o Claude Code
-Facilita a integração do Claude no fluxo simplificado
-"""
-
 import os
 import subprocess
 import json

@@ -1,8 +1,3 @@
-#!/usr/bin/env python3
-"""
-Script para processar e traduzir todos os artigos existentes na pasta posts_para_traduzir
-"""
-
 import os
 import json
 import logging

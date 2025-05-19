@@ -1,7 +1,3 @@
-"""
-Integração Claude Code para o fluxo_simplificado
-Fornece funcionalidades para tradução e formatação usando Claude Code
-"""
 import os
 import sys
 import logging
