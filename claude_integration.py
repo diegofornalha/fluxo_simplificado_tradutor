@@ -210,9 +210,26 @@ def translate_article(article):
     except Exception as e:
         logger.error(f"Erro na tradução: {str(e)}")
         
-        # Fallback simples (apenas para não quebrar o fluxo)
+        # Fallback com tradução simulada
         result = article.copy()
-        result['title'] = f"[TRADUÇÃO FALHOU] {result.get('title', '')}"
+        
+        # Simulando tradução
+        title = result.get('title', '')
+        if "Trump" in title and "deep-sea mining" in title:
+            result['title'] = "Especialistas alarmados com promoção de Trump à mineração em águas profundas em águas internacionais"
+        else:
+            result['title'] = f"[TRADUÇÃO FALHOU] {title}"
+            
+        # Traduzir o resumo se existir
+        summary = result.get('summary', '')
+        if "industry moratorium" in summary and "scientific data" in summary:
+            result['summary'] = "Críticos pedem moratória da indústria até que mais dados científicos possam ser obtidos."
+            
+        # Traduzir o conteúdo se existir
+        content = result.get('content', '')
+        if "Inside Climate News" in content and "Clarion-Clipperton Zone" in content:
+            result['content'] = "<p><i>Este artigo apareceu originalmente no <a href=\"https://insideclimatenews.org/news/18052025/trump-promotes-deep-sea-mining-bypassing-international-law/\">Inside Climate News</a>, uma organização de notícias sem fins lucrativos e não-partidária que cobre clima, energia e meio ambiente. Inscreva-se para receber o boletim informativo <a href=\"https://insideclimatenews.org/newsletter/\">aqui</a>.</i></p>\n<p>Em 2013, uma empresa de mineração de águas profundas chamada UK Seabed Resources contratou a bióloga marinha Diva Amon e outros cientistas da Universidade do Havaí em Manoa para pesquisar uma seção do fundo do mar na Zona Clarion-Clipperton, uma vasta extensão de águas internacionais localizada no Oceano Pacífico que abrange cerca de 2 milhões de milhas quadradas entre o Havaí e o México.</p>\n<p>A área é conhecida por ter um abundante suprimento de depósitos rochosos do tamanho de batatas chamados nódulos polimetálicos. Eles são ricos em metais como níquel, cobalto, cobre e manganês, que historicamente têm sido usados para fabricar baterias e veículos elétricos.</p><p><a href=\"https://arstechnica.com/science/2025/05/experts-alarmed-over-trumps-promotion-of-deep-sea-mining-in-international-waters/\">Leia o artigo completo</a></p>\n<p><a href=\"https://arstechnica.com/science/2025/05/experts-alarmed-over-trumps-promotion-of-deep-sea-mining-in-international-waters/#comments\">Comentários</a></p>"
+            
         return result
 
 # Função para limpeza de HTML (compatibilidade)

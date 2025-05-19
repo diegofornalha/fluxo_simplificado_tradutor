@@ -25,7 +25,7 @@ class ClaudeConnector:
     def __init__(self, claude_path="claude", timeout=60):
         self.claude_path = claude_path
         self.timeout = timeout
-        self.verify_claude()
+        self.claude_disponivel = self.verify_claude()
     
     def verify_claude(self):
         """Verifica se o Claude CLI está disponível"""
@@ -57,10 +57,11 @@ class ClaudeConnector:
                 # Construir o comando
                 cmd = f'{self.claude_path} -p "{escaped_prompt}"'
                 
+                logger.debug(f"Enviando comando: {cmd[:200]}...")
+                
                 # Executar o comando
                 result = subprocess.run(
-                    cmd,
-                    shell=True,
+                    [self.claude_path, '-p', prompt],
                     text=True,
                     capture_output=True,
                     timeout=self.timeout
@@ -111,15 +112,7 @@ class ClaudeConnector:
     
     def traduzir(self, texto):
         """Traduz um texto do inglês para o português brasileiro"""
-        prompt = f"""
-        Traduza o seguinte texto do inglês para o português brasileiro:
-        
-        "{texto}"
-        
-        Traduza de forma natural, mantendo o significado original.
-        Responda apenas com o texto traduzido, sem explicações.
-        """
-        
+        prompt = f"Traduza para português brasileiro: '{texto}'. Responda apenas com a tradução."
         return self.send_prompt(prompt)
     
     def resumir(self, texto, max_palavras=100):
@@ -153,67 +146,65 @@ class ClaudeConnector:
         return self.extract_json(resposta)
     
     def formatar_para_sanity(self, titulo, conteudo, resumo="", fonte="", link=""):
-        """Formata um artigo para o schema do Sanity CMS"""
-        prompt = f"""
-        Converta o seguinte artigo para o formato Portable Text do Sanity CMS:
+        """Formata um artigo para o schema do Sanity CMS - sem uso de Claude"""
+        import uuid
+        import datetime
+        import unicodedata
         
-        TÍTULO: {titulo}
+        # Criar slug a partir do título
+        slug = titulo.lower()
+        # Normalizar para remover acentos
+        slug = unicodedata.normalize('NFKD', slug)
+        slug = ''.join([c for c in slug if not unicodedata.combining(c)])
+        # Substituir espaços e caracteres especiais
+        slug = re.sub(r'[^\w\s-]', '', slug)
+        slug = re.sub(r'[\s_]+', '-', slug)
+        slug = slug.strip('-')[:50]  # Limitar a 50 caracteres
         
-        RESUMO: {resumo}
+        # Processar conteúdo - separar parágrafos
+        paragrafos = re.split(r'<p>|</p>|\n\n', conteudo)
+        paragrafos = [p.strip() for p in paragrafos if p.strip()]
         
-        CONTEÚDO: {conteudo}
+        # Criar blocos de conteúdo
+        blocks = []
+        for paragrafo in paragrafos:
+            # Limpar tags HTML básicas
+            texto_limpo = re.sub(r'<[^>]+>', '', paragrafo)
+            texto_limpo = texto_limpo.strip()
+            if texto_limpo:
+                blocks.append({
+                    "_type": "block",
+                    "_key": uuid.uuid4().hex[:8],
+                    "style": "normal",
+                    "markDefs": [],
+                    "children": [{
+                        "_type": "span",
+                        "_key": uuid.uuid4().hex[:8],
+                        "text": texto_limpo,
+                        "marks": []
+                    }]
+                })
         
-        FONTE: {fonte}
+        # Criar o documento formatado
+        documento = {
+            "_type": "post",
+            "_id": f"post_{uuid.uuid4().hex[:8]}",  
+            "title": titulo,
+            "slug": {
+                "_type": "slug",
+                "current": slug
+            },
+            "excerpt": resumo[:299],  # Limitar a 299 caracteres
+            "content": blocks,
+            "originalSource": {
+                "url": link,
+                "title": titulo,
+                "site": fonte
+            },
+            "publishedAt": datetime.datetime.now().isoformat()
+        }
         
-        LINK: {link}
-        
-        O formato deve seguir exatamente este schema:
-        ```json
-        {{
-          "_type": "post",
-          "title": "Título do artigo",
-          "slug": {{
-            "_type": "slug",
-            "current": "titulo-do-artigo" // slug em minúsculas, sem acentos, espaços como traços
-          }},
-          "publishedAt": "2023-05-18T12:34:56Z", // data atual ISO
-          "excerpt": "Resumo breve do post (máximo 299 caracteres)",
-          "content": [
-            {{
-              "_type": "block",
-              "_key": "randomKey1", // gere chaves aleatórias
-              "style": "normal",
-              "markDefs": [],
-              "children": [
-                {{
-                  "_type": "span",
-                  "_key": "randomKey2", // gere chaves aleatórias
-                  "text": "Texto do parágrafo",
-                  "marks": []
-                }}
-              ]
-            }},
-            // Cada parágrafo deve ser um bloco separado
-          ],
-          "originalSource": {{
-            "url": "https://site-original.com/artigo",
-            "title": "Título Original",
-            "site": "Nome do Site"
-          }}
-        }}
-        ```
-        
-        IMPORTANTE:
-        1. Gere um slug removendo acentos, convertendo para minúsculas, e substituindo espaços por traços
-        2. Divida o conteúdo em blocos separados para cada parágrafo
-        3. Gere chaves aleatórias (_key) para cada bloco e span
-        4. O resumo deve ter no máximo 299 caracteres
-        
-        Responda apenas com o JSON formatado, sem explicações.
-        """
-        
-        resposta = self.send_prompt(prompt)
-        return self.extract_json(resposta)
+        return documento
 
 # Instância global para uso fácil
 claude = ClaudeConnector()
@@ -226,6 +217,10 @@ def traduzir(texto):
 def resumir(texto, max_palavras=100):
     """Resume um texto"""
     return claude.resumir(texto, max_palavras)
+
+def verificar_claude():
+    """Verifica se o Claude está disponível"""
+    return claude.claude_disponivel
 
 def formatar_para_sanity(titulo, conteudo, resumo="", fonte="", link=""):
     """Formata artigo para Sanity"""

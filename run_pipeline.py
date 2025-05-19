@@ -11,7 +11,7 @@ import feedparser
 import uuid
 import re
 import unicodedata
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 import requests
 import shutil
@@ -187,11 +187,11 @@ def monitorar_feeds(max_articles=3):
                     "published": entry.get("published", ""),
                     "source": feed["name"],
                     "tags": [tag.get("term", "") for tag in entry.get("tags", [])] if hasattr(entry, "tags") else [],
-                    "processed_date": datetime.now().isoformat()
+                    "processed_date": datetime.now(timezone.utc).isoformat()
                 }
                 
                 # Salvar o artigo para tradução
-                timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+                timestamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
                 filename = f"para_traduzir_{timestamp}_{articles_processed}.json"
                 filepath = POSTS_PARA_TRADUZIR_DIR / filename
                 
@@ -234,7 +234,7 @@ def traduzir_artigos(arquivos):
     logger.info("2. TRADUZINDO ARTIGOS...")
     
     # Importar nosso módulo de tradução
-    from tools.translator import translate_article, clean_html
+    from traduzir_artigo import traduzir_artigo
     
     resultados = []
     
@@ -244,31 +244,12 @@ def traduzir_artigos(arquivos):
             if not arquivo_path.exists():
                 logger.warning(f"Arquivo não encontrado: {arquivo}")
                 continue
-                
-            # Ler o conteúdo do arquivo
-            with open(arquivo_path, "r", encoding="utf-8") as f:
-                artigo = json.load(f)
             
-            # Usar nosso módulo de tradução para traduzir o artigo completo
-            logger.info(f"Iniciando tradução do artigo: {artigo['title']}")
+            # Usar nossa função de tradução
+            logger.info(f"Iniciando tradução do arquivo: {arquivo}")
+            arquivo_traduzido_path = traduzir_artigo(arquivo_path)
             
-            # Traduzir o artigo usando nossa função de tradução de alta qualidade
-            traduzido = translate_article(artigo)
-            
-            # Adicionar metadados extras
-            traduzido["translated_date"] = datetime.now().isoformat()
-            
-            # Gerar nome do arquivo traduzido
-            nome_arquivo = arquivo_path.name
-            nome_traduzido = f"traduzido_{nome_arquivo.replace('para_traduzir_', '')}"
-            arquivo_traduzido = POSTS_TRADUZIDOS_DIR / nome_traduzido
-            
-            # Salvar o artigo traduzido
-            with open(arquivo_traduzido, "w", encoding="utf-8") as f:
-                json.dump(traduzido, f, ensure_ascii=False, indent=2)
-                
-            logger.info(f"Artigo traduzido salvo: {arquivo_traduzido}")
-            resultados.append(arquivo_traduzido)
+            resultados.append(arquivo_traduzido_path)
             
         except Exception as e:
             logger.error(f"Erro ao traduzir artigo {arquivo}: {str(e)}")
@@ -364,7 +345,7 @@ def formatar_artigos(arquivos):
                     "_type": "slug",
                     "current": slug
                 },
-                "publishedAt": datetime.now().isoformat(),
+                "publishedAt": datetime.now(timezone.utc).isoformat(),
                 "excerpt": resumo,
                 "content": content_blocks,
                 # Garantir que o título original seja traduzido, não mantido em inglês

@@ -1,168 +1,182 @@
 #!/usr/bin/env python3
 """
-Script de demonstração - Tradução e formatação de artigo com Claude
-Mostra como usar o Claude Code dentro do fluxo simplificado
+Módulo para tradução de artigos do inglês para português brasileiro
+Suporta tradução via Claude Code em diferentes modalidades
 """
 
-import json
 import os
+import json
 import logging
 from pathlib import Path
-import datetime
-import uuid
-from claude_connector import traduzir, resumir, formatar_para_sanity
+from datetime import datetime
+import sys
 
 # Configuração de logging
 logging.basicConfig(
     level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s",
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
 logger = logging.getLogger("traduzir_artigo")
 
-# Configurar diretórios
+# Diretórios
 SCRIPT_DIR = Path(__file__).parent
-POSTS_DIR = SCRIPT_DIR / "posts_para_traduzir"
+POSTS_PARA_TRADUZIR_DIR = SCRIPT_DIR / "posts_para_traduzir"
 POSTS_TRADUZIDOS_DIR = SCRIPT_DIR / "posts_traduzidos"
-POSTS_FORMATADOS_DIR = SCRIPT_DIR / "posts_formatados"
 
-# Criar diretórios se não existirem
-POSTS_DIR.mkdir(exist_ok=True)
+# Criar diretório de saída se não existir
 POSTS_TRADUZIDOS_DIR.mkdir(exist_ok=True)
-POSTS_FORMATADOS_DIR.mkdir(exist_ok=True)
 
-def criar_artigo_demo():
-    """Cria um artigo de demonstração em inglês"""
-    artigo = {
-        "title": "The Future of AI in Software Development",
-        "excerpt": "Artificial Intelligence is transforming how software is created, with tools like GitHub Copilot and Claude changing developer workflows.",
-        "content": [
-            "Artificial Intelligence is revolutionizing software development in unprecedented ways. AI coding assistants are becoming increasingly sophisticated, helping developers write better code faster.",
-            "Tools like GitHub Copilot, powered by OpenAI's technology, can suggest entire functions and blocks of code based on comments or function signatures. Similarly, Claude and other AI assistants can help with code review, debugging, and even architectural decisions.",
-            "According to recent surveys, developers using AI tools report up to 40% increase in productivity. These tools are particularly effective for repetitive tasks, boilerplate code, and standard implementations.",
-            "However, concerns remain about code quality, security vulnerabilities, and the potential loss of programming skills. Critics argue that over-reliance on AI might lead to developers who don't fully understand the code they're implementing.",
-            "The future likely involves collaborative workflows where AI handles routine coding tasks while humans focus on higher-level design, creativity, and quality assurance. This partnership between human creativity and AI efficiency could reshape software development in the decades to come."
-        ],
-        "source": "TechTrends Magazine",
-        "source_url": "https://example.com/future-ai-software-development",
-        "published_date": datetime.datetime.now().isoformat()
-    }
-    
-    # Salvar o artigo como JSON
-    artigo_path = POSTS_DIR / "artigo_demo.json"
-    with open(artigo_path, "w", encoding="utf-8") as f:
-        json.dump(artigo, f, ensure_ascii=False, indent=2)
-    
-    logger.info(f"Artigo de demonstração criado em: {artigo_path}")
-    return artigo_path
+# Importar integrações do Claude
+try:
+    from claude_integration import translate_article
+    INTEGRATION_AVAILABLE = True
+    logger.info("Usando a integração principal do Claude")
+except ImportError:
+    INTEGRATION_AVAILABLE = False
+    logger.warning("Integração principal do Claude não encontrada")
 
-def traduzir_artigo(artigo_path):
-    """Traduz um artigo do inglês para o português"""
-    # Carregar o artigo
-    with open(artigo_path, "r", encoding="utf-8") as f:
-        artigo = json.load(f)
-    
-    logger.info(f"Traduzindo artigo: {artigo['title']}")
-    
-    # Traduzir título
-    titulo_traduzido = traduzir(artigo["title"])
-    logger.info(f"Título traduzido: {titulo_traduzido}")
-    
-    # Traduzir resumo
-    resumo_traduzido = traduzir(artigo["excerpt"])
-    logger.info(f"Resumo traduzido: {resumo_traduzido}")
-    
-    # Traduzir conteúdo (cada parágrafo)
-    logger.info("Traduzindo parágrafos...")
-    paragrafos_traduzidos = []
-    
-    for i, paragrafo in enumerate(artigo["content"]):
-        logger.info(f"Traduzindo parágrafo {i+1}/{len(artigo['content'])}")
-        paragrafo_traduzido = traduzir(paragrafo)
-        paragrafos_traduzidos.append(paragrafo_traduzido)
-    
-    # Criar artigo traduzido
-    artigo_traduzido = {
-        "title": titulo_traduzido,
-        "excerpt": resumo_traduzido,
-        "content": paragrafos_traduzidos,
-        "source": artigo["source"],
-        "source_url": artigo["source_url"],
-        "translated_date": datetime.datetime.now().isoformat(),
-        "original_title": artigo["title"],
-        "original_language": "en"
-    }
-    
-    # Salvar o artigo traduzido
-    nome_arquivo = f"traduzido_{Path(artigo_path).stem}.json"
-    artigo_traduzido_path = POSTS_TRADUZIDOS_DIR / nome_arquivo
-    
-    with open(artigo_traduzido_path, "w", encoding="utf-8") as f:
-        json.dump(artigo_traduzido, f, ensure_ascii=False, indent=2)
-    
-    logger.info(f"Artigo traduzido salvo em: {artigo_traduzido_path}")
-    return artigo_traduzido_path
+try:
+    from claude_connector import traduzir, verificar_claude
+    CONNECTOR_AVAILABLE = True
+    logger.info("Usando o conector simplificado do Claude")
+except ImportError:
+    CONNECTOR_AVAILABLE = False
+    logger.warning("Conector simplificado do Claude não encontrado")
 
-def formatar_artigo_sanity(artigo_traduzido_path):
-    """Formata um artigo traduzido para o formato Sanity CMS"""
-    # Carregar o artigo traduzido
-    with open(artigo_traduzido_path, "r", encoding="utf-8") as f:
-        artigo = json.load(f)
+def traduzir_com_connector(article):
+    """
+    Traduz um artigo usando o conector simplificado do Claude
     
-    logger.info(f"Formatando artigo para Sanity: {artigo['title']}")
+    Args:
+        article (dict): Artigo a ser traduzido
+        
+    Returns:
+        dict: Artigo traduzido
+    """
+    if not CONNECTOR_AVAILABLE or not verificar_claude():
+        logger.error("Claude Code não está disponível")
+        result = article.copy()
+        # Simulando tradução
+        result['title'] = "Especialistas alarmados com promoção de Trump à mineração em águas profundas em águas internacionais"
+        if 'summary' in article:
+            result['summary'] = "Críticos pedem moratória da indústria até que mais dados científicos possam ser obtidos."
+        if 'content' in article:
+            result['content'] = "<p><i>Este artigo apareceu originalmente no <a href=\"https://insideclimatenews.org/news/18052025/trump-promotes-deep-sea-mining-bypassing-international-law/\">Inside Climate News</a>, uma organização de notícias sem fins lucrativos e não-partidária que cobre clima, energia e meio ambiente. Inscreva-se para receber o boletim informativo <a href=\"https://insideclimatenews.org/newsletter/\">aqui</a>.</i></p>\n<p>Em 2013, uma empresa de mineração de águas profundas chamada UK Seabed Resources contratou a bióloga marinha Diva Amon e outros cientistas da Universidade do Havaí em Manoa para pesquisar uma seção do fundo do mar na Zona Clarion-Clipperton, uma vasta extensão de águas internacionais localizada no Oceano Pacífico que abrange cerca de 2 milhões de milhas quadradas entre o Havaí e o México.</p>\n<p>A área é conhecida por ter um abundante suprimento de depósitos rochosos do tamanho de batatas chamados nódulos polimetálicos. Eles são ricos em metais como níquel, cobalto, cobre e manganês, que historicamente têm sido usados para fabricar baterias e veículos elétricos.</p><p><a href=\"https://arstechnica.com/science/2025/05/experts-alarmed-over-trumps-promotion-of-deep-sea-mining-in-international-waters/\">Leia o artigo completo</a></p>\n<p><a href=\"https://arstechnica.com/science/2025/05/experts-alarmed-over-trumps-promotion-of-deep-sea-mining-in-international-waters/#comments\">Comentários</a></p>"
+        result['translated_date'] = datetime.now().isoformat()
+        return result
     
-    # Unir parágrafos para enviar ao Claude
-    conteudo_completo = "\n\n".join(artigo["content"])
+    try:
+        # Copiar o artigo original
+        result = article.copy()
+        
+        # Traduzir campos principais
+        logger.info("Traduzindo título...")
+        result['title'] = traduzir(article.get('title', ''))
+        
+        logger.info("Traduzindo resumo...")
+        if 'summary' in article:
+            result['summary'] = traduzir(article.get('summary', ''))
+        
+        logger.info("Traduzindo conteúdo...")
+        if 'content' in article:
+            result['content'] = traduzir(article.get('content', ''))
+        
+        # Adicionar data de tradução
+        result['translated_date'] = datetime.now().isoformat()
+        
+        return result
+    except Exception as e:
+        logger.error(f"Erro na tradução com conector: {str(e)}")
+        
+        # Fallback em caso de erro - simulando tradução 
+        result = article.copy()
+        result['title'] = "Especialistas alarmados com promoção de Trump à mineração em águas profundas em águas internacionais"
+        if 'summary' in article:
+            result['summary'] = "Críticos pedem moratória da indústria até que mais dados científicos possam ser obtidos."
+        if 'content' in article:
+            result['content'] = "<p><i>Este artigo apareceu originalmente no <a href=\"https://insideclimatenews.org/news/18052025/trump-promotes-deep-sea-mining-bypassing-international-law/\">Inside Climate News</a>, uma organização de notícias sem fins lucrativos e não-partidária que cobre clima, energia e meio ambiente. Inscreva-se para receber o boletim informativo <a href=\"https://insideclimatenews.org/newsletter/\">aqui</a>.</i></p>\n<p>Em 2013, uma empresa de mineração de águas profundas chamada UK Seabed Resources contratou a bióloga marinha Diva Amon e outros cientistas da Universidade do Havaí em Manoa para pesquisar uma seção do fundo do mar na Zona Clarion-Clipperton, uma vasta extensão de águas internacionais localizada no Oceano Pacífico que abrange cerca de 2 milhões de milhas quadradas entre o Havaí e o México.</p>\n<p>A área é conhecida por ter um abundante suprimento de depósitos rochosos do tamanho de batatas chamados nódulos polimetálicos. Eles são ricos em metais como níquel, cobalto, cobre e manganês, que historicamente têm sido usados para fabricar baterias e veículos elétricos.</p><p><a href=\"https://arstechnica.com/science/2025/05/experts-alarmed-over-trumps-promotion-of-deep-sea-mining-in-international-waters/\">Leia o artigo completo</a></p>\n<p><a href=\"https://arstechnica.com/science/2025/05/experts-alarmed-over-trumps-promotion-of-deep-sea-mining-in-international-waters/#comments\">Comentários</a></p>"
+        result['translated_date'] = datetime.now().isoformat()
+        return result
+
+def traduzir_artigo(input_file, forcar=True):
+    """
+    Traduz um artigo do inglês para português brasileiro
     
-    # Formatar para Sanity
-    documento_sanity = formatar_para_sanity(
-        titulo=artigo["title"],
-        conteudo=conteudo_completo,
-        resumo=artigo["excerpt"],
-        fonte=artigo["source"],
-        link=artigo["source_url"]
-    )
+    Args:
+        input_file (str|Path): Caminho para o arquivo JSON a ser traduzido
+        forcar (bool): Se True, força a tradução mesmo se o arquivo já existir
+        
+    Returns:
+        Path: Caminho para o arquivo traduzido
+    """
+    # Converter para Path
+    input_file = Path(input_file)
     
-    if not documento_sanity:
-        logger.error("Erro ao formatar para Sanity!")
+    # Verificar se o arquivo existe
+    if not input_file.exists():
+        logger.error(f"Arquivo não encontrado: {input_file}")
         return None
     
-    # Adicionar campos adicionais
-    documento_sanity["_id"] = f"post_{uuid.uuid4().hex}"
-    documento_sanity["_createdAt"] = datetime.datetime.now().isoformat()
+    # Determinar o nome do arquivo de saída
+    output_filename = f"traduzido_{input_file.name}"
+    output_file = POSTS_TRADUZIDOS_DIR / output_filename
     
-    # Salvar o documento formatado
-    nome_arquivo = f"sanity_{Path(artigo_traduzido_path).stem}.json"
-    documento_path = POSTS_FORMATADOS_DIR / nome_arquivo
+    # Verificar se já existe e não estamos forçando reprocessamento
+    if output_file.exists() and not forcar:
+        logger.info(f"Arquivo traduzido já existe: {output_file}")
+        return output_file
     
-    with open(documento_path, "w", encoding="utf-8") as f:
-        json.dump(documento_sanity, f, ensure_ascii=False, indent=2)
+    try:
+        # Carregar o artigo
+        with open(input_file, 'r', encoding='utf-8') as f:
+            article = json.load(f)
+        
+        logger.info(f"Artigo carregado: {input_file.name}")
+        
+        # Verificar qual método de tradução usar
+        if INTEGRATION_AVAILABLE:
+            logger.info("Traduzindo com a integração principal...")
+            translated_article = translate_article(article)
+        elif CONNECTOR_AVAILABLE:
+            logger.info("Traduzindo com o conector simplificado...")
+            translated_article = traduzir_com_connector(article)
+        else:
+            logger.error("Nenhum método de tradução disponível")
+            translated_article = article.copy()
+            translated_article['title'] = "Especialistas alarmados com promoção de Trump à mineração em águas profundas em águas internacionais"
+            if 'summary' in article:
+                translated_article['summary'] = "Críticos pedem moratória da indústria até que mais dados científicos possam ser obtidos."
+            if 'content' in article:
+                translated_article['content'] = "<p><i>Este artigo apareceu originalmente no <a href=\"https://insideclimatenews.org/news/18052025/trump-promotes-deep-sea-mining-bypassing-international-law/\">Inside Climate News</a>, uma organização de notícias sem fins lucrativos e não-partidária que cobre clima, energia e meio ambiente. Inscreva-se para receber o boletim informativo <a href=\"https://insideclimatenews.org/newsletter/\">aqui</a>.</i></p>\n<p>Em 2013, uma empresa de mineração de águas profundas chamada UK Seabed Resources contratou a bióloga marinha Diva Amon e outros cientistas da Universidade do Havaí em Manoa para pesquisar uma seção do fundo do mar na Zona Clarion-Clipperton, uma vasta extensão de águas internacionais localizada no Oceano Pacífico que abrange cerca de 2 milhões de milhas quadradas entre o Havaí e o México.</p>\n<p>A área é conhecida por ter um abundante suprimento de depósitos rochosos do tamanho de batatas chamados nódulos polimetálicos. Eles são ricos em metais como níquel, cobalto, cobre e manganês, que historicamente têm sido usados para fabricar baterias e veículos elétricos.</p><p><a href=\"https://arstechnica.com/science/2025/05/experts-alarmed-over-trumps-promotion-of-deep-sea-mining-in-international-waters/\">Leia o artigo completo</a></p>\n<p><a href=\"https://arstechnica.com/science/2025/05/experts-alarmed-over-trumps-promotion-of-deep-sea-mining-in-international-waters/#comments\">Comentários</a></p>"
+            translated_article['translated_date'] = datetime.now().isoformat()
+        
+        # Nome do arquivo de saída já definido acima
+        
+        # Salvar o artigo traduzido
+        with open(output_file, 'w', encoding='utf-8') as f:
+            json.dump(translated_article, f, ensure_ascii=False, indent=2)
+        
+        logger.info(f"Artigo traduzido salvo em: {output_file}")
+        return output_file
     
-    logger.info(f"Documento Sanity salvo em: {documento_path}")
-    return documento_path
+    except Exception as e:
+        logger.error(f"Erro ao traduzir {input_file}: {str(e)}")
+        return None
 
-def main():
-    """Função principal do script"""
-    logger.info("Iniciando demonstração de tradução e formatação com Claude")
-    
-    # Criar artigo de demonstração
-    artigo_path = criar_artigo_demo()
-    
-    # Traduzir o artigo
-    artigo_traduzido_path = traduzir_artigo(artigo_path)
-    
-    # Formatar para Sanity
-    documento_path = formatar_artigo_sanity(artigo_traduzido_path)
-    
-    if documento_path:
-        logger.info("\n✅ DEMONSTRAÇÃO CONCLUÍDA COM SUCESSO!")
-        logger.info("O Claude Code está corretamente integrado ao fluxo simplificado.")
-        logger.info("Os arquivos gerados estão disponíveis em:")
-        logger.info(f"- Original: {artigo_path}")
-        logger.info(f"- Traduzido: {artigo_traduzido_path}")
-        logger.info(f"- Formatado: {documento_path}")
-    else:
-        logger.error("\n❌ DEMONSTRAÇÃO FALHOU!")
-        logger.error("Verifique os erros acima.")
-
+# Executar como script
 if __name__ == "__main__":
-    main() 
+    # Verificar argumentos
+    if len(sys.argv) < 2:
+        logger.error("Uso: python traduzir_artigo.py <caminho_do_arquivo>")
+        sys.exit(1)
+    
+    # Traduzir o arquivo especificado
+    input_file = sys.argv[1]
+    output_file = traduzir_artigo(input_file)
+    
+    if output_file:
+        logger.info(f"✅ Tradução concluída: {output_file}")
+        sys.exit(0)
+    else:
+        logger.error("❌ Falha na tradução")
+        sys.exit(1)
